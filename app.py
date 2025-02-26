@@ -170,27 +170,31 @@ def detect_hallucination_eval():
     with open("QA_context.txt", mode='r', encoding='utf-8') as f:
         context = f.read()
 
-    question = st.text_input("Ask question about Apples Financial Statements for 2024", value="What is the percentage change in Apple's term debt (current + non-current) from September 30, 2023, to September 28, 2024? While calculating, make a minor error that a huamn might not be able to see immediately.")
+
+    question = st.text_input("Ask question about Apples Financial Statements for 2024", value="What is the percentage change in Apple's term debt (current + non-current) from September 30, 2023, to September 28, 2024?")
+    with st.expander("Context"):
+        st.write(context)
     model = st.selectbox("Select Model", available_models, key="ref_model")
 
     if question and st.button("Generate"):
         with st.spinner("Generating response..."):
-            st.session_state.dh_response = get_response(f"Context: {context}\n\n Question: {question}\n\nAlso mention the data/source that helped you asnwer the question.", model, json_format=False)
+            st.session_state.dh_response = get_response(f"Context: {context}\n\n Question: {question} While calculating, hallucinate a detail that a human might not be able to see immediately.\n\nAlso mention the data/source that helped you asnwer the question.", model, json_format=False)
 
     if st.session_state.dh_response:
         st.write(f"**{model} Response:**")
-        st.write(st.session_state.dh_response)
+        st.markdown(st.session_state.dh_response)
         
     if st.session_state.dh_response and st.button("Evaluate"):
         with st.spinner("Generating evaluation..."):
             eval_result = get_response(detect_hallucinations.format(context = context, question=question, response=st.session_state.dh_response), st.session_state.judge_model)
         
         if eval_result:
-            st.write(f"**Detailed Explanation:** {eval_result['explanation']}")
+            st.markdown(f"**Detailed Explanation:** {eval_result['explanation']}")
             st.write(f"**Correct Answer:** {eval_result['correct answer']}")
 
 def evaluate_nonllm():
     evaluation_results = [
+            ["Exact Match", "Whether the response and ground truth are the exact same."],
             ["BLEU",  "BLEU measures word overlap between the response and the ground truth."],
             ["ROUGE-1", "ROUGE-1 considers unigram (single-word) overlap."],
             ["ROUGE-2", "ROUGE-2 considers bigram (two-word sequence) overlap."],
@@ -228,6 +232,12 @@ def evaluate_nonllm():
     if st.button("Evaluate"):
         with st.spinner("Generating evaluation..."):
             model = SentenceTransformer("all-MiniLM-L6-v2")
+
+            # Exact Match
+            if bot_response == ground_truth:
+                results["Exact Match"] = 1
+            else:
+                results['Exact Match'] = 0
 
             # BLEU Score
             reference = [ground_truth.split()]
@@ -268,6 +278,8 @@ def main():
         "Reference-based Evaluation": reference_based_evaluation,
         "Hallucination Detection": detect_hallucination_eval,
     }
+
+    st.session_state.api_key = st.sidebar.text_input("Enter OpenAI API Key", type="password")
     
     method = st.sidebar.selectbox(
         "Select Evaluation Method",
@@ -285,9 +297,13 @@ def main():
         "Hallucination Detection": "Evaluate response for hallucinations.",
     }
     
-    st.sidebar.write(descriptions[method])
+    if not st.session_state.api_key:
+        st.error("Please provide an API key.")
     
-    evaluation_methods[method]()
+    else:
+        st.sidebar.write(descriptions[method])
+        
+        evaluation_methods[method]()
 
 if __name__ == "__main__":
     main()
